@@ -1,7 +1,7 @@
 import {HttpClient, HttpHeaders} from '@angular/common/http';
 import {Injectable} from '@angular/core';
 import {Cookie} from 'ng2-cookies';
-import {concatMap, Observable, pipe, tap} from "rxjs";
+import {concatMap, Observable} from "rxjs";
 import {AccessToken, AccessTokenInfo, RefreshTokenInfo} from "./pojo";
 
 @Injectable({
@@ -30,12 +30,21 @@ export class LoginServiceService {
   }
 
   checkCredentials() {
-    return Cookie.check('access_token');
+    if (!Cookie.check("access_token")) {
+      return false;
+    } else {
+      this.generateValidAccessToken();
+      return true;
+    }
+
   }
 
   logout() {
     Cookie.delete('access_token');
     Cookie.delete('refresh_token');
+    Cookie.delete('aud');
+    Cookie.delete('exp');
+    Cookie.delete('sub');
     window.location.reload();
   }
 
@@ -54,7 +63,8 @@ export class LoginServiceService {
       params.toString(), {headers: headers})
       .pipe(
         concatMap<AccessToken, Observable<AccessTokenInfo>>((data) => {
-          return this.saveTokenAndExtractTokenInfo(data);
+          this.saveTokenDetails(data);
+          return this.getTokenInfo(data.access_token);
         })
       )
       .subscribe({
@@ -78,56 +88,52 @@ export class LoginServiceService {
       params.toString);
   }
 
-  getValidAccessToken(): string {
+  generateValidAccessToken() {
     let exp: string = Cookie.get("exp");
     let currentTime: Date = new Date();
-    if (+exp - currentTime.getTime() > 10) {
-      return Cookie.get("access_token")
-    } else {
-      let flag: boolean = true;
-      let access_token: string | undefined = "";
+    if ((parseInt(exp) - (currentTime.getTime() / 1000)) < 10) {
+      console.log("chutiya ban geya");
       this.getAccessTokenUsingRefreshToken(Cookie.get("refresh_token"))
+        .pipe(
+          concatMap<RefreshTokenInfo, Observable<AccessTokenInfo>>((data) => {
+            this.saveTokenDetails(data);
+            return this.getTokenInfo(data.access_token)
+          })
+        )
         .subscribe({
-          next: (value: RefreshTokenInfo) => {
-            flag = false;
-            access_token = value.access_token;
+          next: (value) => {
+            this.saveAccessTokenInfo(value);
           },
           error: err => console.log(err)
         });
-      while (flag) ;
-      return access_token;
+      console.log("shouvik hutiya----before---");
+      console.log("shouvik hutiya----");
     }
   }
 
-  private saveAccessTokenInfo(tokenInfo: AccessTokenInfo) {
-    if (tokenInfo.aud != null) {
-      Cookie.set("aud", tokenInfo.aud);
+  private saveAccessTokenInfo(accessTokenInfo: AccessTokenInfo) {
+    if (accessTokenInfo.aud != null) {
+      Cookie.set("aud", accessTokenInfo.aud);
     }
-    if (tokenInfo.exp != null) {
-      Cookie.set("exp", tokenInfo.exp);
+    if (accessTokenInfo.exp != null) {
+      Cookie.set("exp", accessTokenInfo.exp);
     }
-    if (tokenInfo.sub != null) {
-      Cookie.set("sub", tokenInfo.sub);
+    if (accessTokenInfo.sub != null) {
+      Cookie.set("sub", accessTokenInfo.sub);
     }
   }
 
-  private saveTokenAndExtractTokenInfo(data: AccessToken): Observable<AccessToken> {
-    this.saveTokenDetails(data);
-    return this._http.get<AccessTokenInfo>(this.tokenInfoUri + data.access_token);
+  private getTokenInfo(accessToken: string | undefined): Observable<AccessTokenInfo> {
+    return this._http.get<AccessTokenInfo>(this.tokenInfoUri + accessToken);
   }
 
-  private saveTokenDetails(token: AccessToken) {
-    if (token.access_token != null) {
-      Cookie.set("access_token", token.access_token);
+  private saveTokenDetails(accessToken: AccessToken) {
+    if (accessToken.access_token != null) {
+      Cookie.set("access_token", accessToken.access_token);
     }
-    if (token.refresh_token != null) {
-      Cookie.set("refresh_token", token.refresh_token);
+    if (accessToken.refresh_token != null) {
+      Cookie.set("refresh_token", accessToken.refresh_token);
     }
-    console.log('Obtained Access token');
-    console.log("Shouvik-----")
-    this.tokenInfoUri = this.tokenInfoUri + token.access_token;
-    console.log(this.tokenInfoUri);
-    console.log(token);
   }
 }
 
