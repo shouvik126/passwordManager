@@ -73,7 +73,8 @@ export class LoginServiceService {
           window.location.href = 'http://localhost:4200';
         },
         error: err => {
-          console.log(err)
+          console.log(err);
+          this.logout();
         }
       });
   }
@@ -104,7 +105,10 @@ export class LoginServiceService {
           next: (value) => {
             this.saveAccessTokenInfo(value);
           },
-          error: err => console.log(err)
+          error: err => {
+            console.log(err);
+            this.logout();
+          }
         });
       console.log("shouvik hutiya----before---");
       console.log("shouvik hutiya----");
