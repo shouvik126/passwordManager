@@ -1,9 +1,8 @@
-import {HttpClient, HttpHeaders} from '@angular/common/http';
+import {HttpClient, HttpHeaders, HttpParams} from '@angular/common/http';
 import {Injectable} from '@angular/core';
 import {Cookie} from 'ng2-cookies';
 import {concatMap, Observable} from "rxjs";
 import {AccessToken, AccessTokenInfo, RefreshTokenInfo} from "./pojo";
-
 @Injectable({
   providedIn: 'root'
 })
@@ -15,6 +14,7 @@ export class LoginServiceService {
   public clientSecret: string = "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";
   public redirectUri: string = "http://localhost:4200";
   public tokenInfoUri: string = "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=";
+  public   DRIVE_FILE: string = "https://www.googleapis.com/auth/drive.file";
 
   constructor(private _http: HttpClient) {
   }
@@ -25,7 +25,7 @@ export class LoginServiceService {
       "&redirect_uri=" + this.redirectUri +
       "&prompt=consent" +
       "&access_type=offline" +
-      "&scope=https://www.googleapis.com/auth/drive" +
+      "&scope="+ this.DRIVE_FILE +
       "+https://www.googleapis.com/auth/userinfo.profile";
   }
 
@@ -45,6 +45,7 @@ export class LoginServiceService {
     Cookie.delete('aud');
     Cookie.delete('exp');
     Cookie.delete('sub');
+    this.isLoggedIn = false;
     window.location.reload();
   }
 
@@ -71,6 +72,7 @@ export class LoginServiceService {
         next: (tokenInfo: AccessTokenInfo) => {
           this.saveAccessTokenInfo(tokenInfo);
           window.location.href = 'http://localhost:4200';
+          this.isLoggedIn = true;
         },
         error: err => {
           console.log(err);
@@ -80,13 +82,15 @@ export class LoginServiceService {
   }
 
   private getAccessTokenUsingRefreshToken(refreshToken: string): Observable<RefreshTokenInfo> {
-    let params = new URLSearchParams();
+    let params = new HttpParams();
     params.append('grant_type', 'refresh_token');
     params.append('client_id', this.clientId);
     params.append('client_secret', this.clientSecret);
     params.append('refresh_token', refreshToken);
-    return this._http.post<RefreshTokenInfo>('https://www.googleapis.com/oauth2/v4/token',
-      params.toString);
+    let headers =
+      new HttpHeaders({'Content-type': 'application/json'});
+    const body = {"text": "this is text"};
+    return this._http.post<RefreshTokenInfo>('https://www.googleapis.com/oauth2/v4/token',null,{headers: headers, params: params});
   }
 
   generateValidAccessToken() {
@@ -97,15 +101,20 @@ export class LoginServiceService {
       this.getAccessTokenUsingRefreshToken(Cookie.get("refresh_token"))
         .pipe(
           concatMap<RefreshTokenInfo, Observable<AccessTokenInfo>>((data) => {
+            console.log("save-token before");
             this.saveTokenDetails(data);
+            console.log("save-token after");
             return this.getTokenInfo(data.access_token)
           })
         )
         .subscribe({
           next: (value) => {
+            console.log("yoyo-success");
             this.saveAccessTokenInfo(value);
+            this.isLoggedIn = true;
           },
           error: err => {
+            console.log("Yoyo-error");
             console.log(err);
             this.logout();
           }
@@ -131,12 +140,16 @@ export class LoginServiceService {
     return this._http.get<AccessTokenInfo>(this.tokenInfoUri + accessToken);
   }
 
-  private saveTokenDetails(accessToken: AccessToken) {
+  private saveTokenDetails(accessToken: AccessToken | RefreshTokenInfo) {
     if (accessToken.access_token != null) {
       Cookie.set("access_token", accessToken.access_token);
     }
-    if (accessToken.refresh_token != null) {
-      Cookie.set("refresh_token", accessToken.refresh_token);
+    if (!(accessToken instanceof AccessToken) || accessToken.refresh_token != null) {
+      if (!(accessToken instanceof RefreshTokenInfo)) {
+        if (accessToken.refresh_token != null) {
+          Cookie.set("refresh_token", accessToken.refresh_token);
+        }
+      }
     }
   }
 }
